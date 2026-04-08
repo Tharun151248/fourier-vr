@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VR Electronic Components Lab – Electron Flow Visualizer</title>
+  <meta name="description" content="Interactive 3D WebVR lab showing how electronic components work internally with animated electron flow." />
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@500;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0a1a;
+      color: #e0e0f0;
+      overflow: hidden;
+    }
+
+    /* ── HUD overlay ─────────────────────────────────── */
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      background: linear-gradient(180deg, rgba(8,8,26,0.92) 0%, rgba(8,8,26,0.6) 100%);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(100,140,255,0.18);
+    }
+
+    #hud h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.15rem;
+      background: linear-gradient(90deg, #64b5f6, #ce93d8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 1.5px;
+    }
+
+    #component-nav {
+      display: flex;
+      gap: 6px;
+    }
+
+    #component-nav button {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 7px 16px;
+      border: 1px solid rgba(100,140,255,0.25);
+      border-radius: 20px;
+      background: rgba(100,140,255,0.08);
+      color: #a0b8f0;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+
+    #component-nav button:hover,
+    #component-nav button.active {
+      background: rgba(100,140,255,0.25);
+      color: #fff;
+      border-color: rgba(100,180,255,0.6);
+      box-shadow: 0 0 14px rgba(100,140,255,0.2);
+    }
+
+    /* ── Info Panel (bottom) ──────────────────────────── */
+    #info-panel {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 1000;
+      padding: 18px 32px;
+      background: linear-gradient(0deg, rgba(8,8,26,0.94) 0%, rgba(8,8,26,0.5) 100%);
+      backdrop-filter: blur(14px);
+      border-top: 1px solid rgba(100,140,255,0.15);
+      text-align: center;
+      transition: opacity 0.4s;
+    }
+
+    #info-panel h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      margin-bottom: 4px;
+      color: #90caf9;
+    }
+
+    #info-panel p {
+      font-size: 0.82rem;
+      color: #b0b8d0;
+      max-width: 740px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+
+    /* VR button override */
+    .a-enter-vr-button {
+      background: rgba(100,140,255,0.25) !important;
+      border: 1px solid rgba(100,180,255,0.4) !important;
+      border-radius: 12px !important;
+      bottom: 80px !important;
+    }
+  </style>
+</head>
+<body>
+  <!-- ─── HUD ──────────────────────────────────────── -->
+  <div id="hud">
+    <h1>⚡ VR ELECTRONIC COMPONENTS LAB</h1>
+    <div id="component-nav">
+      <button class="active" data-target="resistor">Resistor</button>
+      <button data-target="capacitor">Capacitor</button>
+      <button data-target="inductor">Inductor</button>
+      <button data-target="diode">Diode</button>
+      <button data-target="bjt">BJT</button>
+      <button data-target="mosfet">MOSFET</button>
+    </div>
+  </div>
+
+  <!-- ─── Info Panel ───────────────────────────────── -->
+  <div id="info-panel">
+    <h2 id="info-title">Resistor</h2>
+    <p  id="info-desc">Electrons flow through a lattice of fixed atoms. They collide and zig-zag, converting kinetic energy into heat – that's resistance!</p>
+  </div>
+
+  <!-- ═══════════════ A-FRAME SCENE ═══════════════ -->
+  <a-scene
+    vr-mode-ui="enabled: true"
+    renderer="antialias: true; colorManagement: true; physicallyCorrectLights: false"
+    fog="type: exponential; color: #080822; density: 0.012"
+  >
+    <!-- ── Assets ──────────────────────────────────── -->
+    <a-assets>
+      <a-mixin id="electron" geometry="primitive: sphere; radius: 0.04"
+        material="color: #64b5f6; emissive: #42a5f5; emissiveIntensity: 1.6; shader: standard; metalness: 0.3; roughness: 0.2"></a-mixin>
+      <a-mixin id="hole-particle" geometry="primitive: sphere; radius: 0.04"
+        material="color: #ef5350; emissive: #e53935; emissiveIntensity: 1.6; shader: standard; metalness: 0.3; roughness: 0.2"></a-mixin>
+      <a-mixin id="atom" geometry="primitive: sphere; radius: 0.08"
+        material="color: #78909c; emissive: #546e7a; emissiveIntensity: 0.4; shader: standard; metalness: 0.6; roughness: 0.3; opacity: 0.7; transparent: true"></a-mixin>
+    </a-assets>
+
+    <!-- ── Lighting ────────────────────────────────── -->
+    <a-entity light="type: ambient; color: #334; intensity: 0.5"></a-entity>
+    <a-entity light="type: directional; color: #aac; intensity: 0.8" position="5 8 3"></a-entity>
+    <a-entity light="type: point; color: #4488ff; intensity: 0.6; distance: 30" position="0 4 0"></a-entity>
+    <a-entity light="type: point; color: #aa44ff; intensity: 0.4; distance: 20" position="-5 3 -4"></a-entity>
+
+    <!-- ── Floor ───────────────────────────────────── -->
+    <a-plane position="0 0 0" rotation="-90 0 0" width="60" height="60"
+      material="color: #0d0d24; metalness: 0.3; roughness: 0.7"></a-plane>
+
+    <!-- ── Grid lines on floor ─────────────────────── -->
+    <a-entity id="grid" position="0 0.01 0" rotation="-90 0 0">
+      <a-plane width="60" height="60"
+        material="color: #1a1a3a; opacity: 0.3; transparent: true; wireframe: true;
+                  wireframeLinewidth: 1; repeat: 30 30"></a-plane>
+    </a-entity>
+
+    <!-- ── Camera Rig ──────────────────────────────── -->
+    <a-entity id="camera-rig" position="0 1.6 4">
+      <a-camera look-controls wasd-controls="acceleration: 20" fov="70">
+        <a-cursor color="#64b5f6" fuse="false" raycaster="objects: .clickable"></a-cursor>
+      </a-camera>
+    </a-entity>
+
+    <!-- ═══════════════════════════════════════════════
+         COMPONENT GROUPS – each positioned in a gallery
+         ═══════════════════════════════════════════════ -->
+
+    <!-- ──────────────── 1. RESISTOR ──────────────── -->
+    <a-entity id="resistor-group" position="0 1.5 0" visible="true" class="component-group">
+      <!-- outer casing (transparent) -->
+      <a-cylinder position="0 0 0" radius="0.35" height="2.4" rotation="0 0 90"
+        material="color: #b08050; opacity: 0.2; transparent: true; side: double; metalness: 0.1; roughness: 0.6"></a-cylinder>
+      <!-- colour bands -->
+      <a-cylinder position="-0.5 0 0" radius="0.36" height="0.06" rotation="0 0 90"
+        material="color: #e53935; emissive: #c62828; emissiveIntensity: 0.3"></a-cylinder>
+      <a-cylinder position="-0.2 0 0" radius="0.36" height="0.06" rotation="0 0 90"
+        material="color: #7b1fa2; emissive: #6a1b9a; emissiveIntensity: 0.3"></a-cylinder>
+      <a-cylinder position="0.1 0 0" radius="0.36" height="0.06" rotation="0 0 90"
+        material="color: #ff8f00; emissive: #ef6c00; emissiveIntensity: 0.3"></a-cylinder>
+      <a-cylinder position="0.5 0 0" radius="0.36" height="0.06" rotation="0 0 90"
+        material="color: #ffd54f; emissive: #ffc107; emissiveIntensity: 0.2"></a-cylinder>
+      <!-- wire leads -->
+      <a-cylinder position="-1.6 0 0" radius="0.04" height="1.0" rotation="0 0 90"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <a-cylinder position="1.6  0 0" radius="0.04" height="1.0" rotation="0 0 90"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <!-- lattice atoms inside -->
+      <a-entity id="resistor-atoms"></a-entity>
+      <!-- electrons container -->
+      <a-entity id="resistor-electrons"></a-entity>
+      <!-- glow -->
+      <a-sphere position="0 0 0" radius="0.6"
+        material="color: #ff6e40; emissive: #ff3d00; emissiveIntensity: 0.15; opacity: 0.08; transparent: true; side: double"></a-sphere>
+    </a-entity>
+
+    <!-- ──────────────── 2. CAPACITOR ─────────────── -->
+    <a-entity id="capacitor-group" position="0 1.5 0" visible="false" class="component-group">
+      <!-- top plate -->
+      <a-box position="0 0.4 0" width="1.8" height="0.08" depth="1.2"
+        material="color: #78909c; metalness: 0.85; roughness: 0.15"></a-box>
+      <!-- bottom plate -->
+      <a-box position="0 -0.4 0" width="1.8" height="0.08" depth="1.2"
+        material="color: #78909c; metalness: 0.85; roughness: 0.15"></a-box>
+      <!-- dielectric (gap) -->
+      <a-box position="0 0 0" width="1.78" height="0.72" depth="1.18"
+        material="color: #26c6da; opacity: 0.07; transparent: true; side: double"></a-box>
+      <!-- electric field lines (very subtle) -->
+      <a-entity id="cap-field-lines"></a-entity>
+      <!-- leads -->
+      <a-cylinder position="0 0.85 0" radius="0.04" height="0.8"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <a-cylinder position="0 -0.85 0" radius="0.04" height="0.8"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <!-- electrons -->
+      <a-entity id="cap-electrons-top"></a-entity>
+      <a-entity id="cap-electrons-bottom"></a-entity>
+    </a-entity>
+
+    <!-- ──────────────── 3. INDUCTOR ──────────────── -->
+    <a-entity id="inductor-group" position="0 1.5 0" visible="false" class="component-group">
+      <!-- core -->
+      <a-cylinder position="0 0 0" radius="0.15" height="2.2" rotation="0 0 90"
+        material="color: #5c6bc0; opacity: 0.25; transparent: true; metalness: 0.4; roughness: 0.3"></a-cylinder>
+      <!-- coil turns (series of rings) -->
+      <a-entity id="inductor-coils"></a-entity>
+      <!-- magnetic field visualization -->
+      <a-torus position="0 0 0" radius="0.8" radius-tubular="0.01" rotation="0 0 90"
+        material="color: #ce93d8; emissive: #ab47bc; emissiveIntensity: 0.6; opacity: 0.12; transparent: true"
+        animation="property: material.opacity; from: 0.05; to: 0.18; dur: 1500; dir: alternate; loop: true; easing: easeInOutSine"></a-torus>
+      <a-torus position="0 0 0" radius="1.1" radius-tubular="0.008" rotation="0 0 90"
+        material="color: #b39ddb; emissive: #7e57c2; emissiveIntensity: 0.4; opacity: 0.07; transparent: true"
+        animation="property: material.opacity; from: 0.03; to: 0.12; dur: 1800; dir: alternate; loop: true; easing: easeInOutSine"></a-torus>
+      <!-- leads -->
+      <a-cylinder position="-1.6 0 0" radius="0.04" height="0.8" rotation="0 0 90"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <a-cylinder position="1.6 0 0" radius="0.04" height="0.8" rotation="0 0 90"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <!-- electrons -->
+      <a-entity id="inductor-electrons"></a-entity>
+    </a-entity>
+
+    <!-- ──────────────── 4. DIODE ─────────────────── -->
+    <a-entity id="diode-group" position="0 1.5 0" visible="false" class="component-group">
+      <!-- P-type block -->
+      <a-box position="-0.55 0 0" width="1.0" height="0.7" depth="0.7"
+        material="color: #ef5350; opacity: 0.35; transparent: true; metalness: 0.2; roughness: 0.5"></a-box>
+      <a-text value="P" position="-0.55 0.55 0" align="center" color="#ef9a9a" width="2"></a-text>
+      <!-- N-type block -->
+      <a-box position="0.55 0 0" width="1.0" height="0.7" depth="0.7"
+        material="color: #42a5f5; opacity: 0.35; transparent: true; metalness: 0.2; roughness: 0.5"></a-box>
+      <a-text value="N" position="0.55 0.55 0" align="center" color="#90caf9" width="2"></a-text>
+      <!-- Depletion region -->
+      <a-box position="0 0 0" width="0.12" height="0.72" depth="0.72"
+        material="color: #fff176; emissive: #ffee58; emissiveIntensity: 0.5; opacity: 0.2; transparent: true"
+        animation="property: material.opacity; from: 0.12; to: 0.3; dur: 1000; dir: alternate; loop: true"></a-box>
+      <!-- Arrow showing current direction -->
+      <a-entity position="0 -0.65 0">
+        <a-cylinder position="0 0 0" radius="0.02" height="1.6" rotation="0 0 90"
+          material="color: #66bb6a; emissive: #43a047; emissiveIntensity: 0.6"></a-cylinder>
+        <a-cone position="0.85 0 0" radius-bottom="0.07" height="0.14" rotation="0 0 -90"
+          material="color: #66bb6a; emissive: #43a047; emissiveIntensity: 0.6"></a-cone>
+        <a-text value="Current Flow →" position="0 -0.15 0" align="center" color="#81c784" width="2.5"
+          font="mozillavr"></a-text>
+      </a-entity>
+      <!-- leads -->
+      <a-cylinder position="-1.5 0 0" radius="0.04" height="0.9" rotation="0 0 90"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <a-cylinder position="1.5 0 0" radius="0.04" height="0.9" rotation="0 0 90"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <!-- electrons & holes -->
+      <a-entity id="diode-electrons"></a-entity>
+      <a-entity id="diode-holes"></a-entity>
+    </a-entity>
+
+    <!-- ──────────────── 5. BJT ───────────────────── -->
+    <a-entity id="bjt-group" position="0 1.5 0" visible="false" class="component-group">
+      <!-- Emitter (N) -->
+      <a-box position="-1.0 0 0" width="0.7" height="0.8" depth="0.7"
+        material="color: #42a5f5; opacity: 0.35; transparent: true; metalness: 0.2; roughness: 0.5"></a-box>
+      <a-text value="E (N)" position="-1.0 0.6 0" align="center" color="#90caf9" width="2"></a-text>
+      <!-- Base (P) – thin -->
+      <a-box position="0 0 0" width="0.35" height="0.8" depth="0.7"
+        material="color: #ef5350; opacity: 0.35; transparent: true; metalness: 0.2; roughness: 0.5"></a-box>
+      <a-text value="B (P)" position="0 0.6 0" align="center" color="#ef9a9a" width="2"></a-text>
+      <!-- Collector (N) -->
+      <a-box position="1.0 0 0" width="0.7" height="0.8" depth="0.7"
+        material="color: #42a5f5; opacity: 0.35; transparent: true; metalness: 0.2; roughness: 0.5"></a-box>
+      <a-text value="C (N)" position="1.0 0.6 0" align="center" color="#90caf9" width="2"></a-text>
+      <!-- Junctions glow -->
+      <a-box position="-0.5 0 0" width="0.06" height="0.82" depth="0.72"
+        material="color: #fff176; emissive: #ffee58; emissiveIntensity: 0.4; opacity: 0.18; transparent: true"
+        animation="property: material.opacity; from: 0.1; to: 0.25; dur: 900; dir: alternate; loop: true"></a-box>
+      <a-box position="0.5 0 0" width="0.06" height="0.82" depth="0.72"
+        material="color: #fff176; emissive: #ffee58; emissiveIntensity: 0.4; opacity: 0.18; transparent: true"
+        animation="property: material.opacity; from: 0.1; to: 0.25; dur: 900; dir: alternate; loop: true; delay: 200"></a-box>
+      <!-- terminals -->
+      <a-cylinder position="-1.0 -0.8 0" radius="0.04" height="0.7"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <a-cylinder position="0 -0.8 0" radius="0.04" height="0.7"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <a-cylinder position="1.0 -0.8 0" radius="0.04" height="0.7"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <!-- electrons -->
+      <a-entity id="bjt-electrons"></a-entity>
+      <a-entity id="bjt-base-electrons"></a-entity>
+    </a-entity>
+
+    <!-- ──────────────── 6. MOSFET ────────────────── -->
+    <a-entity id="mosfet-group" position="0 1.5 0" visible="false" class="component-group">
+      <!-- Substrate (P) -->
+      <a-box position="0 -0.3 0" width="2.8" height="0.5" depth="0.7"
+        material="color: #ef5350; opacity: 0.22; transparent: true; metalness: 0.2; roughness: 0.5"></a-box>
+      <a-text value="P-substrate" position="0 -0.75 0" align="center" color="#ef9a9a" width="2.5"></a-text>
+      <!-- Source (N) -->
+      <a-box position="-0.9 0.1 0" width="0.6" height="0.35" depth="0.7"
+        material="color: #42a5f5; opacity: 0.4; transparent: true; metalness: 0.2; roughness: 0.5"></a-box>
+      <a-text value="Source (N)" position="-0.9 0.5 0" align="center" color="#90caf9" width="2"></a-text>
+      <!-- Drain (N) -->
+      <a-box position="0.9 0.1 0" width="0.6" height="0.35" depth="0.7"
+        material="color: #42a5f5; opacity: 0.4; transparent: true; metalness: 0.2; roughness: 0.5"></a-box>
+      <a-text value="Drain (N)" position="0.9 0.5 0" align="center" color="#90caf9" width="2"></a-text>
+      <!-- Gate oxide -->
+      <a-box position="0 0.32 0" width="1.1" height="0.06" depth="0.72"
+        material="color: #fff9c4; opacity: 0.5; transparent: true"></a-box>
+      <!-- Gate metal -->
+      <a-box position="0 0.45 0" width="1.1" height="0.12" depth="0.72"
+        material="color: #b0bec5; metalness: 0.9; roughness: 0.1"></a-box>
+      <a-text value="Gate" position="0 0.7 0" align="center" color="#cfd8dc" width="2"></a-text>
+      <!-- Channel region (forms when gate is on) -->
+      <a-box id="mosfet-channel" position="0 0.05 0" width="0.65" height="0.12" depth="0.68"
+        material="color: #42a5f5; emissive: #1e88e5; emissiveIntensity: 0.5; opacity: 0.25; transparent: true"
+        animation="property: material.opacity; from: 0.12; to: 0.35; dur: 1200; dir: alternate; loop: true"></a-box>
+      <!-- terminals -->
+      <a-cylinder position="-0.9 0.65 0" radius="0.04" height="0.7"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <a-cylinder position="0.9 0.65 0" radius="0.04" height="0.7"
+        material="color: #90a4ae; metalness: 0.8; roughness: 0.2"></a-cylinder>
+      <a-cylinder position="0 0.85 0" radius="0.04" height="0.5"
+        material="color: #ffd54f; metalness: 0.7; roughness: 0.2"></a-cylinder>
+      <!-- electrons -->
+      <a-entity id="mosfet-electrons"></a-entity>
+    </a-entity>
+
+  </a-scene>
+
+  <!-- ═══════════════ JAVASCRIPT ═══════════════════ -->
+  <script>
+    /* ──────────────────────────────────────────────────
+       Utility helpers
+       ────────────────────────────────────────────────── */
+    const rand  = (a, b) => a + Math.random() * (b - a);
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    /* We'll store all animation frame IDs per component so we can
+       start / stop them when switching views. */
+    const animFrames = {};
+    let activeComponent = 'resistor';
+
+    /* ──────────────────────────────────────────────────
+       Component descriptions
+       ────────────────────────────────────────────────── */
+    const descriptions = {
+      resistor:  { title: 'Resistor', desc: 'Electrons flow through a lattice of fixed atoms. They collide and zig-zag, converting kinetic energy into heat — that\'s resistance! The colour bands encode its resistance value.' },
+      capacitor: { title: 'Capacitor', desc: 'Two conductive plates separated by an insulator (dielectric). Electrons accumulate on one plate and deplete from the other, storing energy in the electric field between the plates.' },
+      inductor:  { title: 'Inductor', desc: 'Electrons spiral through a coiled wire, generating a magnetic field (shown as expanding purple torus). The inductor stores energy in this magnetic field and resists changes in current.' },
+      diode:     { title: 'Diode (PN Junction)', desc: 'A P-type and N-type semiconductor meet at a junction. Under forward bias, electrons (blue) from the N-side and holes (red) from the P-side flow toward the junction, allowing current to pass in one direction only.' },
+      bjt:       { title: 'BJT (NPN Transistor)', desc: 'Three semiconductor layers: Emitter (N), Base (P), Collector (N). A small base current allows a much larger flow of electrons from Emitter to Collector — this is transistor amplification!' },
+      mosfet:    { title: 'MOSFET', desc: 'A voltage on the Gate creates an inversion channel in the P-substrate, connecting Source (N) and Drain (N). Electrons flow through this channel — Gate voltage controls the switch without drawing current!' },
+    };
+
+    /* ──────────────────────────────────────────────────
+       Navigation
+       ────────────────────────────────────────────────── */
+    document.querySelectorAll('#component-nav button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.target;
+        if (target === activeComponent) return;
+
+        /* toggle button states */
+        document.querySelector('#component-nav button.active').classList.remove('active');
+        btn.classList.add('active');
+
+        /* hide current, show target */
+        document.querySelector(`#${activeComponent}-group`).setAttribute('visible', false);
+        document.querySelector(`#${target}-group`).setAttribute('visible', true);
+
+        /* update info panel */
+        document.getElementById('info-title').textContent = descriptions[target].title;
+        document.getElementById('info-desc').textContent  = descriptions[target].desc;
+
+        activeComponent = target;
+      });
+    });
+
+    /* ──────────────────────────────────────────────────
+       Electron factory helper – creates a tiny glowing sphere
+       ────────────────────────────────────────────────── */
+    function makeParticle(parent, mixinId) {
+      const el = document.createElement('a-entity');
+      el.setAttribute('mixin', mixinId || 'electron');
+      parent.appendChild(el);
+      return el;
+    }
+
+    /* ──────────────────────────────────────────────────
+       1. RESISTOR  –  electrons zig-zag through atom lattice
+       ────────────────────────────────────────────────── */
+    (function initResistor() {
+      const atomContainer = document.getElementById('resistor-atoms');
+      const elContainer   = document.getElementById('resistor-electrons');
+
+      // create lattice atoms (4 × 3 grid inside cylinder)
+      for (let i = -3; i <= 3; i++) {
+        for (let j = -1; j <= 1; j++) {
+          const a = document.createElement('a-entity');
+          a.setAttribute('mixin', 'atom');
+          a.setAttribute('position', `${i * 0.28} ${j * 0.18} 0`);
+          atomContainer.appendChild(a);
+        }
+      }
+
+      // spawn electrons
+      const NUM = 18;
+      const electrons = [];
+      for (let i = 0; i < NUM; i++) {
+        const p = makeParticle(elContainer);
+        electrons.push({
+          el: p,
+          x: rand(-1.2, 1.2),
+          y: rand(-0.22, 0.22),
+          z: rand(-0.22, 0.22),
+          vx: rand(0.4, 0.9),
+          vy: 0,
+          vz: 0,
+          nextZigZag: rand(0.2, 0.6),
+          zigTimer: 0,
+        });
+      }
+
+      let prev = performance.now();
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+        electrons.forEach(e => {
+          e.zigTimer += dt;
+          if (e.zigTimer > e.nextZigZag) {
+            e.vy = rand(-1.2, 1.2);
+            e.vz = rand(-0.8, 0.8);
+            e.nextZigZag = rand(0.15, 0.45);
+            e.zigTimer = 0;
+          }
+          e.vy *= 0.96;
+          e.vz *= 0.96;
+          e.x += e.vx * dt;
+          e.y += e.vy * dt;
+          e.z += e.vz * dt;
+          e.y = clamp(e.y, -0.25, 0.25);
+          e.z = clamp(e.z, -0.25, 0.25);
+          if (e.x > 2.1) e.x = -2.1;
+          e.el.setAttribute('position', `${e.x} ${e.y} ${e.z}`);
+        });
+
+        animFrames.resistor = requestAnimationFrame(tick);
+      }
+      animFrames.resistor = requestAnimationFrame(tick);
+    })();
+
+    /* ──────────────────────────────────────────────────
+       2. CAPACITOR – electrons accumulate on the plates
+       ────────────────────────────────────────────────── */
+    (function initCapacitor() {
+      const topContainer    = document.getElementById('cap-electrons-top');
+      const bottomContainer = document.getElementById('cap-electrons-bottom');
+
+      const NUM = 14;
+      const topElectrons = [];
+      const bottomElectrons = [];
+
+      // incoming electrons on top plate
+      for (let i = 0; i < NUM; i++) {
+        const p = makeParticle(topContainer);
+        topElectrons.push({
+          el: p,
+          x: rand(-0.8, 0.8),
+          y: 1.4,
+          z: rand(-0.5, 0.5),
+          vy: -rand(0.3, 0.7),
+          settled: false,
+          settledY: rand(0.35, 0.48),
+          delay: i * 0.18,
+          timer: 0,
+        });
+      }
+
+      // electrons leaving bottom plate
+      for (let i = 0; i < NUM; i++) {
+        const p = makeParticle(bottomContainer);
+        bottomElectrons.push({
+          el: p,
+          x: rand(-0.8, 0.8),
+          y: rand(-0.48, -0.35),
+          z: rand(-0.5, 0.5),
+          vy: -rand(0.3, 0.7),
+          active: false,
+          delay: i * 0.18 + 0.5,
+          timer: 0,
+        });
+      }
+
+      let prev = performance.now();
+      let cycle = 0;
+      const CYCLE_DUR = 4; // seconds per charge/discharge cycle
+
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+        cycle += dt;
+        const phase = (cycle % (CYCLE_DUR * 2)) / CYCLE_DUR; // 0→1 charge, 1→2 discharge
+
+        topElectrons.forEach((e, i) => {
+          e.timer += dt;
+          if (phase < 1) {
+            // charge – electrons flow to top plate
+            if (e.timer > e.delay) {
+              if (!e.settled) {
+                e.y += e.vy * dt;
+                if (e.y <= e.settledY) { e.y = e.settledY; e.settled = true; }
+              } else {
+                // small jitter
+                e.x += rand(-0.15, 0.15) * dt;
+                e.z += rand(-0.15, 0.15) * dt;
+              }
+            }
+          } else {
+            // discharge – electrons leave
+            e.settled = false;
+            e.y += 0.6 * dt;
+            if (e.y > 1.5) {
+              e.y = 1.4;
+              e.timer = 0;
+              e.x = rand(-0.8, 0.8);
+              e.z = rand(-0.5, 0.5);
+            }
+          }
+          e.el.setAttribute('position', `${e.x} ${e.y} ${e.z}`);
+        });
+
+        bottomElectrons.forEach((e, i) => {
+          e.timer += dt;
+          if (phase < 1) {
+            // charge – electrons leave bottom plate
+            if (e.timer > e.delay) {
+              e.y += e.vy * dt;
+              if (e.y < -1.5) {
+                e.y = rand(-0.48, -0.35);
+                e.x = rand(-0.8, 0.8);
+                e.z = rand(-0.5, 0.5);
+                e.timer = 0;
+              }
+            }
+          } else {
+            // discharge – electrons return
+            e.y += 0.5 * dt;
+            if (e.y > -0.35) {
+              e.y = rand(-0.48, -0.35);
+              e.x = rand(-0.8, 0.8);
+              e.z = rand(-0.5, 0.5);
+            }
+          }
+          e.el.setAttribute('position', `${e.x} ${e.y} ${e.z}`);
+        });
+
+        animFrames.capacitor = requestAnimationFrame(tick);
+      }
+      animFrames.capacitor = requestAnimationFrame(tick);
+    })();
+
+    /* ──────────────────────────────────────────────────
+       3. INDUCTOR – electrons spiral along coil
+       ────────────────────────────────────────────────── */
+    (function initInductor() {
+      const container = document.getElementById('inductor-electrons');
+      const coilContainer = document.getElementById('inductor-coils');
+
+      // draw coil rings
+      const COILS = 12;
+      for (let i = 0; i < COILS; i++) {
+        const t = document.createElement('a-torus');
+        const xPos = -1.0 + (2.0 / (COILS - 1)) * i;
+        t.setAttribute('position', `${xPos} 0 0`);
+        t.setAttribute('radius', '0.32');
+        t.setAttribute('radius-tubular', '0.018');
+        t.setAttribute('rotation', '0 0 90');
+        t.setAttribute('material', 'color: #e0a040; metalness: 0.7; roughness: 0.3; opacity: 0.6; transparent: true');
+        coilContainer.appendChild(t);
+      }
+
+      const NUM = 20;
+      const electrons = [];
+      for (let i = 0; i < NUM; i++) {
+        const p = makeParticle(container);
+        electrons.push({
+          el: p,
+          angle: (Math.PI * 2 / NUM) * i,
+          xOffset: rand(-1.0, 1.0),
+          speed: rand(1.8, 2.6),
+          radius: 0.30,
+        });
+      }
+
+      let prev = performance.now();
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+        electrons.forEach(e => {
+          e.angle += e.speed * dt;
+          e.xOffset += 0.5 * dt;
+          if (e.xOffset > 1.2) e.xOffset = -1.2;
+          const y = Math.cos(e.angle) * e.radius;
+          const z = Math.sin(e.angle) * e.radius;
+          e.el.setAttribute('position', `${e.xOffset} ${y} ${z}`);
+        });
+        animFrames.inductor = requestAnimationFrame(tick);
+      }
+      animFrames.inductor = requestAnimationFrame(tick);
+    })();
+
+    /* ──────────────────────────────────────────────────
+       4. DIODE – electrons (N→junction) & holes (P→junction)
+       ────────────────────────────────────────────────── */
+    (function initDiode() {
+      const elContainer   = document.getElementById('diode-electrons');
+      const holeContainer = document.getElementById('diode-holes');
+
+      const NUM = 12;
+      const electrons = [];
+      const holes = [];
+
+      for (let i = 0; i < NUM; i++) {
+        const pe = makeParticle(elContainer, 'electron');
+        electrons.push({
+          el: pe,
+          x: rand(0.2, 1.0),
+          y: rand(-0.28, 0.28),
+          z: rand(-0.28, 0.28),
+          vx: -rand(0.35, 0.65),
+        });
+        const ph = makeParticle(holeContainer, 'hole-particle');
+        holes.push({
+          el: ph,
+          x: rand(-1.0, -0.2),
+          y: rand(-0.28, 0.28),
+          z: rand(-0.28, 0.28),
+          vx: rand(0.35, 0.65),
+        });
+      }
+
+      let prev = performance.now();
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+
+        electrons.forEach(e => {
+          e.x += e.vx * dt;
+          // recombine near junction then respawn
+          if (e.x < -0.05) {
+            e.x = rand(0.6, 1.1);
+            e.y = rand(-0.28, 0.28);
+            e.z = rand(-0.28, 0.28);
+          }
+          e.el.setAttribute('position', `${e.x} ${e.y} ${e.z}`);
+        });
+
+        holes.forEach(h => {
+          h.x += h.vx * dt;
+          if (h.x > 0.05) {
+            h.x = rand(-1.1, -0.6);
+            h.y = rand(-0.28, 0.28);
+            h.z = rand(-0.28, 0.28);
+          }
+          h.el.setAttribute('position', `${h.x} ${h.y} ${h.z}`);
+        });
+
+        animFrames.diode = requestAnimationFrame(tick);
+      }
+      animFrames.diode = requestAnimationFrame(tick);
+    })();
+
+    /* ──────────────────────────────────────────────────
+       5. BJT – small base current enables large E→C flow
+       ────────────────────────────────────────────────── */
+    (function initBJT() {
+      const mainContainer = document.getElementById('bjt-electrons');
+      const baseContainer = document.getElementById('bjt-base-electrons');
+
+      // main electrons E → C
+      const NUM_MAIN = 18;
+      const mainElectrons = [];
+      for (let i = 0; i < NUM_MAIN; i++) {
+        const p = makeParticle(mainContainer);
+        mainElectrons.push({
+          el: p,
+          x: -1.3,
+          y: rand(-0.3, 0.3),
+          z: rand(-0.28, 0.28),
+          vx: rand(0.5, 1.0),
+          delay: rand(0, 2),
+          timer: 0,
+          active: false,
+        });
+      }
+
+      // base electrons (small trickle)
+      const NUM_BASE = 4;
+      const baseElectrons = [];
+      for (let i = 0; i < NUM_BASE; i++) {
+        const p = makeParticle(baseContainer);
+        p.setAttribute('material', 'color: #ffd54f; emissive: #ffca28; emissiveIntensity: 1.2');
+        baseElectrons.push({
+          el: p,
+          x: rand(-0.12, 0.12),
+          y: -1.2,
+          z: rand(-0.15, 0.15),
+          vy: rand(0.4, 0.7),
+        });
+      }
+
+      let prev = performance.now();
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+
+        // base electrons trickle upward
+        baseElectrons.forEach(b => {
+          b.y += b.vy * dt;
+          if (b.y > 0.0) {
+            b.y = -1.2;
+            b.x = rand(-0.12, 0.12);
+            b.z = rand(-0.15, 0.15);
+          }
+          b.el.setAttribute('position', `${b.x} ${b.y} ${b.z}`);
+        });
+
+        // main electrons E → C
+        mainElectrons.forEach(e => {
+          e.timer += dt;
+          if (e.timer > e.delay) {
+            e.active = true;
+          }
+          if (!e.active) return;
+          e.x += e.vx * dt;
+          if (e.x > 1.5) {
+            e.x = -1.35;
+            e.y = rand(-0.3, 0.3);
+            e.z = rand(-0.28, 0.28);
+          }
+          e.el.setAttribute('position', `${e.x} ${e.y} ${e.z}`);
+        });
+
+        animFrames.bjt = requestAnimationFrame(tick);
+      }
+      animFrames.bjt = requestAnimationFrame(tick);
+    })();
+
+    /* ──────────────────────────────────────────────────
+       6. MOSFET – gate voltage creates channel
+       ────────────────────────────────────────────────── */
+    (function initMOSFET() {
+      const container = document.getElementById('mosfet-electrons');
+
+      const NUM = 16;
+      const electrons = [];
+      for (let i = 0; i < NUM; i++) {
+        const p = makeParticle(container);
+        electrons.push({
+          el: p,
+          x: -0.9 + rand(-0.2, 0),
+          y: rand(-0.02, 0.12),
+          z: rand(-0.28, 0.28),
+          vx: rand(0.4, 0.85),
+          delay: rand(0, 2.5),
+          timer: 0,
+          active: false,
+        });
+      }
+
+      let prev = performance.now();
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+
+        electrons.forEach(e => {
+          e.timer += dt;
+          if (e.timer > e.delay) e.active = true;
+          if (!e.active) return;
+
+          e.x += e.vx * dt;
+
+          // constrain to channel in the middle region
+          if (e.x > -0.3 && e.x < 0.3) {
+            e.y = clamp(e.y, -0.01, 0.1);
+          }
+
+          if (e.x > 1.15) {
+            e.x = -1.1;
+            e.y = rand(-0.02, 0.12);
+            e.z = rand(-0.28, 0.28);
+            e.timer = 0;
+            e.delay = rand(0, 0.5);
+          }
+          e.el.setAttribute('position', `${e.x} ${e.y} ${e.z}`);
+        });
+
+        animFrames.mosfet = requestAnimationFrame(tick);
+      }
+      animFrames.mosfet = requestAnimationFrame(tick);
+    })();
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VR Signals &amp; Systems Lab – Waveform &amp; Transform Visualizer</title>
+  <meta name="description" content="Interactive 3D WebVR lab for Signals and Systems: basic signals, Fourier Series, Fourier Transform, and Laplace Transform visualizations." />
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Orbitron:wght@500;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #06061a;
+      color: #e0e0f0;
+      overflow: hidden;
+    }
+
+    /* ── HUD overlay ───────────────────────────────── */
+    #hud {
+      position: fixed; top: 0; left: 0; right: 0;
+      z-index: 1000;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 24px;
+      background: linear-gradient(180deg, rgba(6,6,26,0.94) 0%, rgba(6,6,26,0.55) 100%);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(80,200,255,0.15);
+    }
+    #hud h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.05rem;
+      background: linear-gradient(90deg, #4dd0e1, #b388ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 1.5px;
+    }
+    #component-nav { display: flex; gap: 5px; flex-wrap: wrap; }
+    #component-nav button {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.74rem; font-weight: 600;
+      padding: 6px 14px;
+      border: 1px solid rgba(80,200,255,0.22);
+      border-radius: 18px;
+      background: rgba(80,200,255,0.06);
+      color: #8ecae6; cursor: pointer;
+      transition: all 0.25s ease;
+      white-space: nowrap;
+    }
+    #component-nav button:hover,
+    #component-nav button.active {
+      background: rgba(80,200,255,0.22);
+      color: #fff;
+      border-color: rgba(80,220,255,0.55);
+      box-shadow: 0 0 14px rgba(80,200,255,0.18);
+    }
+
+    /* ── Info panel ─────────────────────────────────── */
+    #info-panel {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      z-index: 1000;
+      padding: 16px 28px;
+      background: linear-gradient(0deg, rgba(6,6,26,0.95) 0%, rgba(6,6,26,0.45) 100%);
+      backdrop-filter: blur(14px);
+      border-top: 1px solid rgba(80,200,255,0.12);
+      text-align: center;
+    }
+    #info-panel h2 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.95rem; margin-bottom: 4px; color: #80deea;
+    }
+    #info-panel p {
+      font-size: 0.8rem; color: #a0b8d0; max-width: 800px;
+      margin: 0 auto; line-height: 1.55;
+    }
+
+    /* ── Controls overlay ──────────────────────────── */
+    #controls {
+      position: fixed; left: 20px; top: 50%; transform: translateY(-50%);
+      z-index: 1000;
+      display: flex; flex-direction: column; gap: 8px;
+      background: rgba(6,6,26,0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(80,200,255,0.12);
+      border-radius: 14px;
+      padding: 14px;
+      transition: opacity 0.4s;
+    }
+    #controls label {
+      font-size: 0.7rem; color: #8ecae6;
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    #controls input[type="range"] {
+      width: 120px;
+      accent-color: #4dd0e1;
+    }
+    #controls .ctrl-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.65rem; color: #b388ff;
+    }
+    #controls.hidden { opacity: 0; pointer-events: none; }
+
+    .a-enter-vr-button {
+      background: rgba(80,200,255,0.2) !important;
+      border: 1px solid rgba(80,220,255,0.35) !important;
+      border-radius: 12px !important;
+      bottom: 74px !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── HUD ─────────────────────────────────────── -->
+  <div id="hud">
+    <h1>〰️ VR SIGNALS &amp; SYSTEMS LAB</h1>
+    <div id="component-nav">
+      <button class="active" data-target="basic">Basic Signals</button>
+      <button data-target="fourier-series">Fourier Series</button>
+      <button data-target="fourier-transform">Fourier Transform</button>
+      <button data-target="laplace">Laplace Transform</button>
+    </div>
+  </div>
+
+  <!-- ── Info panel ──────────────────────────────── -->
+  <div id="info-panel">
+    <h2 id="info-title">Basic Signals</h2>
+    <p id="info-desc">Fundamental building blocks of signal processing: Unit Impulse δ(t), Unit Step u(t), Ramp r(t), Sinusoidal, and Exponential signals. These form the basis of all linear system analysis.</p>
+  </div>
+
+  <!-- ── Controls ────────────────────────────────── -->
+  <div id="controls">
+    <label>
+      Harmonics (N)
+      <input type="range" id="ctrl-harmonics" min="1" max="30" value="5" />
+      <span class="ctrl-value" id="val-harmonics">5</span>
+    </label>
+    <label>
+      Frequency (Hz)
+      <input type="range" id="ctrl-freq" min="1" max="10" value="2" step="0.5" />
+      <span class="ctrl-value" id="val-freq">2</span>
+    </label>
+    <label>
+      Amplitude
+      <input type="range" id="ctrl-amp" min="1" max="5" value="2" step="0.5" />
+      <span class="ctrl-value" id="val-amp">2</span>
+    </label>
+    <label>
+      Sigma (σ)
+      <input type="range" id="ctrl-sigma" min="-3" max="3" value="-1" step="0.5" />
+      <span class="ctrl-value" id="val-sigma">-1</span>
+    </label>
+  </div>
+
+  <!-- ═══════════════ A-FRAME SCENE ═══════════════ -->
+  <a-scene
+    vr-mode-ui="enabled: true"
+    renderer="antialias: true; colorManagement: true"
+    fog="type: exponential; color: #060622; density: 0.008"
+  >
+    <!-- ── Lighting ────────────────────────────────── -->
+    <a-entity light="type: ambient; color: #223; intensity: 0.55"></a-entity>
+    <a-entity light="type: directional; color: #aac; intensity: 0.7" position="4 8 3"></a-entity>
+    <a-entity light="type: point; color: #4dd0e1; intensity: 0.5; distance: 30" position="0 5 0"></a-entity>
+    <a-entity light="type: point; color: #b388ff; intensity: 0.35; distance: 25" position="-6 3 -3"></a-entity>
+
+    <!-- ── Floor ───────────────────────────────────── -->
+    <a-plane position="0 0 0" rotation="-90 0 0" width="80" height="80"
+      material="color: #0a0a28; metalness: 0.25; roughness: 0.75"></a-plane>
+
+    <!-- ── Camera ──────────────────────────────────── -->
+    <a-entity id="camera-rig" position="0 2.5 12">
+      <a-camera look-controls wasd-controls="acceleration: 18" fov="80">
+        <a-cursor color="#4dd0e1" fuse="false"></a-cursor>
+      </a-camera>
+    </a-entity>
+
+    <!-- ═══════════════════════════════════════════════
+         SECTION GROUPS
+         ═══════════════════════════════════════════════ -->
+
+    <!-- ──────────── 1. BASIC SIGNALS ────────────── -->
+    <a-entity id="basic-group" visible="true" class="section-group" position="0 1.5 0">
+      <!-- Axis helper lines will be drawn by JS -->
+      <a-entity id="basic-scene"></a-entity>
+    </a-entity>
+
+    <!-- ──────────── 2. FOURIER SERIES ───────────── -->
+    <a-entity id="fourier-series-group" visible="false" class="section-group" position="0 1.5 0">
+      <a-entity id="fs-scene"></a-entity>
+    </a-entity>
+
+    <!-- ──────────── 3. FOURIER TRANSFORM ────────── -->
+    <a-entity id="fourier-transform-group" visible="false" class="section-group" position="0 1.5 0">
+      <a-entity id="ft-scene"></a-entity>
+    </a-entity>
+
+    <!-- ──────────── 4. LAPLACE TRANSFORM ────────── -->
+    <a-entity id="laplace-group" visible="false" class="section-group" position="0 1.5 0">
+      <a-entity id="laplace-scene"></a-entity>
+    </a-entity>
+
+  </a-scene>
+
+  <!-- ═══════════════ JAVASCRIPT ═══════════════════ -->
+  <script>
+    /* ═══════════════════════════════════════════════════
+       GLOBALS & HELPERS
+       ═══════════════════════════════════════════════════ */
+    const THREE_NS = AFRAME.THREE;
+    const rand  = (a, b) => a + Math.random() * (b - a);
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const TAU   = Math.PI * 2;
+
+    let activeSection = 'basic';
+    let params = {
+      harmonics: 5,
+      freq: 2,
+      amp: 2,
+      sigma: -1,
+    };
+
+    /* ── Descriptions ──────────────────────────────── */
+    const descriptions = {
+      'basic':              { title: 'Basic Signals', desc: 'Fundamental building blocks of signal processing: Unit Impulse δ(t), Unit Step u(t), Ramp r(t), Sinusoidal sin(2πft), and Exponential e^(σt) signals. These form the basis of all linear system analysis.' },
+      'fourier-series':     { title: 'Fourier Series', desc: 'Any periodic signal can be decomposed into a sum of sinusoids (harmonics). Watch how adding more harmonics (N) builds up a square wave, triangle wave, or sawtooth wave from simple sine and cosine waves.' },
+      'fourier-transform':  { title: 'Fourier Transform', desc: 'The Fourier Transform decomposes a non-periodic signal into its continuous frequency spectrum. Left: time-domain signal x(t). Right: magnitude spectrum |X(f)|. See how a pulse in time becomes a sinc function in frequency.' },
+      'laplace':            { title: 'Laplace Transform', desc: 'The Laplace Transform generalizes the Fourier Transform to the complex s-plane (s = σ + jω). The 3D surface shows |X(s)| — peaks are poles, valleys are zeros. The jω axis (σ=0) corresponds to the Fourier Transform.' },
+    };
+
+    /* ── Navigation ─────────────────────────────────── */
+    document.querySelectorAll('#component-nav button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.target;
+        if (target === activeSection) return;
+        document.querySelector('#component-nav button.active').classList.remove('active');
+        btn.classList.add('active');
+        document.querySelector(`#${activeSection}-group`).setAttribute('visible', false);
+        document.querySelector(`#${target}-group`).setAttribute('visible', true);
+        document.getElementById('info-title').textContent = descriptions[target].title;
+        document.getElementById('info-desc').textContent  = descriptions[target].desc;
+        activeSection = target;
+        rebuildAll();
+      });
+    });
+
+    /* ── Controls ───────────────────────────────────── */
+    ['harmonics', 'freq', 'amp', 'sigma'].forEach(key => {
+      const input = document.getElementById(`ctrl-${key}`);
+      const valEl = document.getElementById(`val-${key}`);
+      input.addEventListener('input', () => {
+        params[key] = parseFloat(input.value);
+        valEl.textContent = input.value;
+        rebuildAll();
+      });
+    });
+
+    /* ═══════════════════════════════════════════════════
+       THREE.JS LINE HELPER
+       Creates a 3D line from an array of [x,y,z] points
+       ═══════════════════════════════════════════════════ */
+    function createLine(points, color, linewidth) {
+      const geometry = new THREE_NS.BufferGeometry();
+      const verts = new Float32Array(points.length * 3);
+      for (let i = 0; i < points.length; i++) {
+        verts[i * 3]     = points[i][0];
+        verts[i * 3 + 1] = points[i][1];
+        verts[i * 3 + 2] = points[i][2];
+      }
+      geometry.setAttribute('position', new THREE_NS.BufferAttribute(verts, 3));
+      const material = new THREE_NS.LineBasicMaterial({ color: new THREE_NS.Color(color), linewidth: linewidth || 2 });
+      return new THREE_NS.Line(geometry, material);
+    }
+
+    function createThickTube(points, color, radius) {
+      const curve = new THREE_NS.CatmullRomCurve3(
+        points.map(p => new THREE_NS.Vector3(p[0], p[1], p[2]))
+      );
+      const geometry = new THREE_NS.TubeGeometry(curve, points.length * 2, radius || 0.02, 6, false);
+      const material = new THREE_NS.MeshStandardMaterial({
+        color: new THREE_NS.Color(color),
+        emissive: new THREE_NS.Color(color),
+        emissiveIntensity: 0.6,
+        metalness: 0.3,
+        roughness: 0.4,
+        transparent: true,
+        opacity: 0.9,
+      });
+      return new THREE_NS.Mesh(geometry, material);
+    }
+
+    /* Creates axis lines with labels */
+    function createAxes(parent, xLen, yLen, zLen, xLabel, yLabel) {
+      // X axis
+      const xAxis = createLine([[-xLen, 0, 0], [xLen, 0, 0]], '#546e7a', 1);
+      parent.object3D.add(xAxis);
+      // Y axis
+      const yAxis = createLine([[0, -yLen, 0], [0, yLen, 0]], '#546e7a', 1);
+      parent.object3D.add(yAxis);
+      // Z axis (if needed)
+      if (zLen > 0) {
+        const zAxis = createLine([[0, 0, -zLen], [0, 0, zLen]], '#37474f', 1);
+        parent.object3D.add(zAxis);
+      }
+      // tick marks on X
+      for (let t = -Math.floor(xLen); t <= Math.floor(xLen); t++) {
+        if (t === 0) continue;
+        const tick = createLine([[t, -0.06, 0], [t, 0.06, 0]], '#455a64', 1);
+        parent.object3D.add(tick);
+      }
+      // tick marks on Y
+      for (let t = -Math.floor(yLen); t <= Math.floor(yLen); t++) {
+        if (t === 0) continue;
+        const tick = createLine([[-0.06, t, 0], [0.06, t, 0]], '#455a64', 1);
+        parent.object3D.add(tick);
+      }
+      // axis labels via a-text
+      if (xLabel) {
+        const xl = document.createElement('a-text');
+        xl.setAttribute('value', xLabel);
+        xl.setAttribute('position', `${xLen + 0.3} -0.2 0`);
+        xl.setAttribute('color', '#78909c');
+        xl.setAttribute('width', '3');
+        xl.setAttribute('align', 'left');
+        parent.appendChild(xl);
+      }
+      if (yLabel) {
+        const yl = document.createElement('a-text');
+        yl.setAttribute('value', yLabel);
+        yl.setAttribute('position', `0.15 ${yLen + 0.2} 0`);
+        yl.setAttribute('color', '#78909c');
+        yl.setAttribute('width', '3');
+        yl.setAttribute('align', 'left');
+        parent.appendChild(yl);
+      }
+    }
+
+    /* Clear a container */
+    function clearContainer(id) {
+      const el = document.getElementById(id);
+      // remove three.js objects
+      while (el.object3D.children.length > 0) {
+        const child = el.object3D.children[0];
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+        el.object3D.remove(child);
+      }
+      // remove a-frame children
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       1.  BASIC SIGNALS
+       ═══════════════════════════════════════════════════ */
+    function buildBasicSignals() {
+      clearContainer('basic-scene');
+      const scene = document.getElementById('basic-scene');
+
+      const SIGNALS = [
+        { name: 'Unit Impulse δ(t)',  color: '#ff7043',  offset: -7,   fn: null,        type: 'impulse' },
+        { name: 'Unit Step u(t)',     color: '#66bb6a',  offset: -3.5, fn: t => t >= 0 ? 1 : 0 },
+        { name: 'Ramp r(t)',         color: '#42a5f5',  offset:  0,   fn: t => t >= 0 ? t : 0 },
+        { name: 'Sinusoidal',        color: '#ab47bc',  offset:  3.5, fn: t => params.amp * Math.sin(TAU * params.freq * t) },
+        { name: 'Exponential e^(σt)',color: '#ffa726',  offset:  7,   fn: t => Math.exp(params.sigma * t) },
+      ];
+
+      SIGNALS.forEach(sig => {
+        const wrapper = document.createElement('a-entity');
+        wrapper.setAttribute('position', `${sig.offset} 0 0`);
+        scene.appendChild(wrapper);
+
+        // sub-axes
+        createAxes(wrapper, 1.8, 1.8, 0, 't', sig.name.split(' ')[0]);
+
+        // label
+        const lbl = document.createElement('a-text');
+        lbl.setAttribute('value', sig.name);
+        lbl.setAttribute('position', '0 2.4 0');
+        lbl.setAttribute('align', 'center');
+        lbl.setAttribute('color', sig.color);
+        lbl.setAttribute('width', '2.5');
+        lbl.setAttribute('font', 'mozillavr');
+        wrapper.appendChild(lbl);
+
+        if (sig.type === 'impulse') {
+          // draw impulse as a vertical arrow at t=0
+          const arrow = createThickTube([[0, 0, 0], [0, 1.5, 0]], sig.color, 0.03);
+          wrapper.object3D.add(arrow);
+          // arrowhead
+          const coneGeo = new THREE_NS.ConeGeometry(0.08, 0.2, 8);
+          const coneMat = new THREE_NS.MeshStandardMaterial({
+            color: new THREE_NS.Color(sig.color),
+            emissive: new THREE_NS.Color(sig.color),
+            emissiveIntensity: 0.5,
+          });
+          const cone = new THREE_NS.Mesh(coneGeo, coneMat);
+          cone.position.set(0, 1.6, 0);
+          wrapper.object3D.add(cone);
+          return;
+        }
+
+        // generate waveform points
+        const pts = [];
+        const N = 200;
+        for (let i = 0; i < N; i++) {
+          const t = -1.6 + (3.2 / (N - 1)) * i;
+          let y = sig.fn(t);
+          y = clamp(y, -1.7, 1.7);
+          pts.push([t, y, 0]);
+        }
+        const tube = createThickTube(pts, sig.color, 0.025);
+        wrapper.object3D.add(tube);
+      });
+
+      // Animated electron travelling along sinusoidal
+      const sinWrapper = scene.querySelector(':scope > a-entity:nth-child(4)') || scene.children[3];
+      if (sinWrapper) {
+        const dot = document.createElement('a-sphere');
+        dot.setAttribute('radius', '0.06');
+        dot.setAttribute('material', `color: #e1bee7; emissive: #ce93d8; emissiveIntensity: 1.5`);
+        dot.id = 'basic-traveller';
+        sinWrapper.appendChild(dot);
+      }
+    }
+
+    /* Animate the travelling dot on sinusoidal */
+    let basicAnimId;
+    function animateBasic() {
+      const dot = document.getElementById('basic-traveller');
+      if (!dot) { basicAnimId = requestAnimationFrame(animateBasic); return; }
+
+      let t_param = -1.6;
+      let prev = performance.now();
+
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+        t_param += 0.6 * dt;
+        if (t_param > 1.6) t_param = -1.6;
+        const y = params.amp * Math.sin(TAU * params.freq * t_param);
+        dot.setAttribute('position', `${t_param} ${clamp(y, -1.7, 1.7)} 0`);
+        basicAnimId = requestAnimationFrame(tick);
+      }
+      basicAnimId = requestAnimationFrame(tick);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       2.  FOURIER SERIES
+       ═══════════════════════════════════════════════════ */
+    function buildFourierSeries() {
+      clearContainer('fs-scene');
+      const scene = document.getElementById('fs-scene');
+      const N = params.harmonics;
+
+      /* --- Left side: individual harmonics --- */
+      const harmGroup = document.createElement('a-entity');
+      harmGroup.setAttribute('position', '-3.5 0 0');
+      scene.appendChild(harmGroup);
+
+      const lbl1 = document.createElement('a-text');
+      lbl1.setAttribute('value', 'Individual Harmonics');
+      lbl1.setAttribute('position', '1.5 2.8 0');
+      lbl1.setAttribute('align', 'center');
+      lbl1.setAttribute('color', '#80cbc4');
+      lbl1.setAttribute('width', '3.5');
+      harmGroup.appendChild(lbl1);
+
+      createAxes(harmGroup, 3, 2.2, 0, 't', '');
+
+      const HARM_COLORS = ['#ef5350', '#ffa726', '#ffee58', '#66bb6a', '#42a5f5', '#ab47bc', '#ec407a', '#26c6da', '#8d6e63', '#78909c',
+                           '#ff8a80', '#ffd180', '#ffff8d', '#b9f6ca', '#82b1ff', '#ea80fc', '#ff80ab', '#84ffff', '#d7ccc8', '#b0bec5',
+                           '#ff5252', '#ffab40', '#ffff00', '#69f0ae', '#448aff', '#e040fb', '#ff4081', '#18ffff', '#bcaaa4', '#90a4ae'];
+
+      for (let n = 1; n <= Math.min(N, 8); n++) {
+        const k = 2 * n - 1; // odd harmonics for square wave
+        const amp = (4 / Math.PI) * (1 / k);
+        const pts = [];
+        const S = 300;
+        for (let i = 0; i < S; i++) {
+          const t = -2.8 + (5.6 / (S - 1)) * i;
+          const y = amp * Math.sin(k * TAU * 0.25 * t);
+          pts.push([t, y, 0]);
+        }
+        const color = HARM_COLORS[(n - 1) % HARM_COLORS.length];
+        const tube = createThickTube(pts, color, 0.012);
+        tube.position.z = -(n - 1) * 0.15; // slight z offset so they don't overlap
+        harmGroup.object3D.add(tube);
+
+        // small label
+        const hlbl = document.createElement('a-text');
+        hlbl.setAttribute('value', `n=${k}`);
+        hlbl.setAttribute('position', `3 ${amp * 0.6} ${-(n - 1) * 0.15}`);
+        hlbl.setAttribute('color', color);
+        hlbl.setAttribute('width', '1.8');
+        hlbl.setAttribute('align', 'left');
+        harmGroup.appendChild(hlbl);
+      }
+
+      /* --- Right side: composite sum building a square wave --- */
+      const sumGroup = document.createElement('a-entity');
+      sumGroup.setAttribute('position', '3.5 0 0');
+      scene.appendChild(sumGroup);
+
+      const lbl2 = document.createElement('a-text');
+      lbl2.setAttribute('value', `Sum of ${N} Harmonics → Square Wave`);
+      lbl2.setAttribute('position', '0 2.8 0');
+      lbl2.setAttribute('align', 'center');
+      lbl2.setAttribute('color', '#4dd0e1');
+      lbl2.setAttribute('width', '3.5');
+      sumGroup.appendChild(lbl2);
+
+      createAxes(sumGroup, 2.8, 2.2, 0, 't', 'x(t)');
+
+      // ideal square wave (faint)
+      const sqPts = [];
+      for (let i = 0; i < 600; i++) {
+        const t = -2.6 + (5.2 / 599) * i;
+        const phase = ((t * 0.25) % 1 + 1) % 1;
+        const y = phase < 0.5 ? 1 : -1;
+        sqPts.push([t, y, 0]);
+      }
+      const sqLine = createLine(sqPts, '#37474f', 1);
+      sumGroup.object3D.add(sqLine);
+
+      // Fourier sum
+      const sumPts = [];
+      const S2 = 500;
+      for (let i = 0; i < S2; i++) {
+        const t = -2.6 + (5.2 / (S2 - 1)) * i;
+        let y = 0;
+        for (let n = 1; n <= N; n++) {
+          const k = 2 * n - 1;
+          y += (4 / Math.PI) * (1 / k) * Math.sin(k * TAU * 0.25 * t);
+        }
+        sumPts.push([t, clamp(y, -2.1, 2.1), 0]);
+      }
+      const sumTube = createThickTube(sumPts, '#4dd0e1', 0.025);
+      sumGroup.object3D.add(sumTube);
+
+      /* --- Formula display --- */
+      const formula = document.createElement('a-text');
+      formula.setAttribute('value', `x(t) = Σ (4/nπ) sin(nωt),  n=1,3,5,...,${2*N-1}`);
+      formula.setAttribute('position', '0 -2.0 0');
+      formula.setAttribute('align', 'center');
+      formula.setAttribute('color', '#b0bec5');
+      formula.setAttribute('width', '5');
+      scene.appendChild(formula);
+    }
+
+    /* Animate Fourier series traveller dot */
+    let fsAnimId;
+    function animateFourierSeries() {
+      const scene = document.getElementById('fs-scene');
+      // Add glowing dot on sum curve
+      let travelDot = document.getElementById('fs-traveller');
+      if (!travelDot) {
+        travelDot = document.createElement('a-sphere');
+        travelDot.id = 'fs-traveller';
+        travelDot.setAttribute('radius', '0.07');
+        travelDot.setAttribute('material', 'color: #80deea; emissive: #4dd0e1; emissiveIntensity: 2');
+        travelDot.setAttribute('position', '3.5 0 0');
+        scene.appendChild(travelDot);
+      }
+
+      let t_param = -2.6;
+      let prev = performance.now();
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+        t_param += 0.8 * dt;
+        if (t_param > 2.6) t_param = -2.6;
+        let y = 0;
+        for (let n = 1; n <= params.harmonics; n++) {
+          const k = 2 * n - 1;
+          y += (4 / Math.PI) * (1 / k) * Math.sin(k * TAU * 0.25 * t_param);
+        }
+        travelDot.setAttribute('position', `${3.5 + t_param} ${clamp(y, -2.1, 2.1)} 0`);
+        fsAnimId = requestAnimationFrame(tick);
+      }
+      fsAnimId = requestAnimationFrame(tick);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       3.  FOURIER TRANSFORM
+       ═══════════════════════════════════════════════════ */
+    function buildFourierTransform() {
+      clearContainer('ft-scene');
+      const scene = document.getElementById('ft-scene');
+
+      /* --- Left: Time domain (rectangular pulse) --- */
+      const timeGroup = document.createElement('a-entity');
+      timeGroup.setAttribute('position', '-3.5 0 0');
+      scene.appendChild(timeGroup);
+
+      const lbl1 = document.createElement('a-text');
+      lbl1.setAttribute('value', 'Time Domain x(t)');
+      lbl1.setAttribute('position', '0 2.8 0');
+      lbl1.setAttribute('align', 'center');
+      lbl1.setAttribute('color', '#ff8a65');
+      lbl1.setAttribute('width', '3.5');
+      timeGroup.appendChild(lbl1);
+
+      createAxes(timeGroup, 2.8, 2.2, 0, 't', 'x(t)');
+
+      // Rectangular pulse
+      const pulseWidth = 1.0 / params.freq;
+      const pulsePts = [];
+      const S = 400;
+      for (let i = 0; i < S; i++) {
+        const t = -2.6 + (5.2 / (S - 1)) * i;
+        const y = (Math.abs(t) <= pulseWidth / 2) ? params.amp : 0;
+        pulsePts.push([t, y, 0]);
+      }
+      const pulseTube = createThickTube(pulsePts, '#ff8a65', 0.025);
+      timeGroup.object3D.add(pulseTube);
+
+      // Pulse width label
+      const pwLbl = document.createElement('a-text');
+      pwLbl.setAttribute('value', `τ = ${(pulseWidth).toFixed(2)}s`);
+      pwLbl.setAttribute('position', `0 ${params.amp + 0.4} 0`);
+      pwLbl.setAttribute('align', 'center');
+      pwLbl.setAttribute('color', '#ffab91');
+      pwLbl.setAttribute('width', '2.5');
+      timeGroup.appendChild(pwLbl);
+
+      /* --- Right: Frequency domain (sinc function) --- */
+      const freqGroup = document.createElement('a-entity');
+      freqGroup.setAttribute('position', '3.5 0 0');
+      scene.appendChild(freqGroup);
+
+      const lbl2 = document.createElement('a-text');
+      lbl2.setAttribute('value', 'Frequency Domain |X(f)|');
+      lbl2.setAttribute('position', '0 2.8 0');
+      lbl2.setAttribute('align', 'center');
+      lbl2.setAttribute('color', '#4fc3f7');
+      lbl2.setAttribute('width', '3.5');
+      freqGroup.appendChild(lbl2);
+
+      createAxes(freqGroup, 2.8, 2.2, 0, 'f', '|X(f)|');
+
+      // sinc function: X(f) = τ * sinc(πfτ)
+      const sincPts = [];
+      const S2 = 500;
+      for (let i = 0; i < S2; i++) {
+        const f = -2.6 + (5.2 / (S2 - 1)) * i;
+        const arg = Math.PI * f * pulseWidth;
+        const y = params.amp * pulseWidth * (Math.abs(arg) < 0.001 ? 1 : Math.sin(arg) / arg);
+        sincPts.push([f, clamp(y, -1.5, 2.2), 0]);
+      }
+      const sincTube = createThickTube(sincPts, '#4fc3f7', 0.025);
+      freqGroup.object3D.add(sincTube);
+
+      // |X(f)| envelope (magnitude)
+      const envPts = [];
+      for (let i = 0; i < S2; i++) {
+        const f = -2.6 + (5.2 / (S2 - 1)) * i;
+        const arg = Math.PI * f * pulseWidth;
+        const y = Math.abs(params.amp * pulseWidth * (Math.abs(arg) < 0.001 ? 1 : Math.sin(arg) / arg));
+        envPts.push([f, clamp(y, 0, 2.2), 0]);
+      }
+      const envLine = createLine(envPts, '#81d4fa', 1);
+      envLine.position.z = 0.01;
+      freqGroup.object3D.add(envLine);
+
+      /* --- Connecting arrow --- */
+      const arrowGroup = document.createElement('a-entity');
+      arrowGroup.setAttribute('position', '0 2.3 0');
+      scene.appendChild(arrowGroup);
+
+      const arrLine = createThickTube([[-1.2, 0, 0], [1.2, 0, 0]], '#b0bec5', 0.015);
+      arrowGroup.object3D.add(arrLine);
+
+      const coneGeo = new THREE_NS.ConeGeometry(0.06, 0.18, 6);
+      const coneMat = new THREE_NS.MeshStandardMaterial({
+        color: new THREE_NS.Color('#b0bec5'),
+        emissive: new THREE_NS.Color('#90a4ae'),
+        emissiveIntensity: 0.4,
+      });
+      const cone = new THREE_NS.Mesh(coneGeo, coneMat);
+      cone.position.set(1.3, 0, 0);
+      cone.rotation.z = -Math.PI / 2;
+      arrowGroup.object3D.add(cone);
+
+      const ftLbl = document.createElement('a-text');
+      ftLbl.setAttribute('value', 'F{ x(t) } = X(f)');
+      ftLbl.setAttribute('position', '0 0.25 0');
+      ftLbl.setAttribute('align', 'center');
+      ftLbl.setAttribute('color', '#80cbc4');
+      ftLbl.setAttribute('width', '4');
+      ftLbl.setAttribute('font', 'mozillavr');
+      arrowGroup.appendChild(ftLbl);
+
+      /* --- Animated energy particles flowing from time to freq domain --- */
+      for (let i = 0; i < 12; i++) {
+        const particle = document.createElement('a-sphere');
+        particle.setAttribute('radius', '0.04');
+        particle.setAttribute('material', `color: #80deea; emissive: #4dd0e1; emissiveIntensity: 1.5; opacity: 0.7; transparent: true`);
+        particle.classList.add('ft-particle');
+        particle.setAttribute('position', `${-3 + rand(0, 0.5)} ${rand(-0.5, 0.5)} ${rand(-0.2, 0.2)}`);
+        scene.appendChild(particle);
+      }
+    }
+
+    let ftAnimId;
+    function animateFourierTransform() {
+      const particles = document.querySelectorAll('.ft-particle');
+      if (!particles.length) { ftAnimId = requestAnimationFrame(animateFourierTransform); return; }
+
+      const speeds = Array.from(particles).map(() => rand(1.5, 3.0));
+      const positions = Array.from(particles).map(() => ({
+        x: -3.5 + rand(0, 1),
+        y: rand(-0.5, 1.5),
+        z: rand(-0.2, 0.2),
+      }));
+
+      let prev = performance.now();
+      function tick(now) {
+        const dt = Math.min((now - prev) / 1000, 0.05);
+        prev = now;
+        particles.forEach((p, i) => {
+          positions[i].x += speeds[i] * dt;
+          if (positions[i].x > 5.5) {
+            positions[i].x = -3.5 + rand(0, 0.5);
+            positions[i].y = rand(-0.5, 1.5);
+          }
+          p.setAttribute('position', `${positions[i].x} ${positions[i].y} ${positions[i].z}`);
+        });
+        ftAnimId = requestAnimationFrame(tick);
+      }
+      ftAnimId = requestAnimationFrame(tick);
+    }
+
+    /* ═══════════════════════════════════════════════════
+       4.  LAPLACE TRANSFORM – 3D SURFACE
+       ═══════════════════════════════════════════════════ */
+    function buildLaplace() {
+      clearContainer('laplace-scene');
+      const scene = document.getElementById('laplace-scene');
+
+      /* Title */
+      const lbl = document.createElement('a-text');
+      lbl.setAttribute('value', '3D Laplace Surface |X(s)|  —  s = σ + jω');
+      lbl.setAttribute('position', '0 3.2 0');
+      lbl.setAttribute('align', 'center');
+      lbl.setAttribute('color', '#b388ff');
+      lbl.setAttribute('width', '5');
+      scene.appendChild(lbl);
+
+      /* Build 3D surface: |X(s)| for X(s) = 1 / ((s+1)(s+2))
+         = 1 / |((σ+1+jω)(σ+2+jω))|
+         Poles at s = -1 and s = -2 */
+      const RES = 80;
+      const sigmaRange = 4;  // -4 to 2
+      const omegaRange = 4;  // -4 to 4
+
+      const positions = [];
+      const colors = [];
+      const indices = [];
+
+      for (let i = 0; i < RES; i++) {
+        for (let j = 0; j < RES; j++) {
+          const sigma = -sigmaRange + (sigmaRange + 2) * (i / (RES - 1));
+          const omega = -omegaRange + 2 * omegaRange * (j / (RES - 1));
+
+          // |X(s)| = 1 / |(s+1)(s+2)|
+          const r1 = Math.sqrt((sigma + 1) ** 2 + omega ** 2);
+          const r2 = Math.sqrt((sigma + 2) ** 2 + omega ** 2);
+          let mag = 1 / Math.max(r1 * r2, 0.08);
+          mag = Math.min(mag, 4); // clamp peaks
+
+          // Map to 3D: sigma → x, omega → z, |X(s)| → y
+          const x = sigma * 1.0;
+          const y = mag * 0.6;
+          const z = omega * 0.6;
+
+          positions.push(x, y, z);
+
+          // Color mapping (height-based gradient)
+          const t = clamp(mag / 3.5, 0, 1);
+          const r = 0.3 + t * 0.7;
+          const g = 0.2 + (1 - Math.abs(t - 0.5) * 2) * 0.6;
+          const b = 0.9 - t * 0.4;
+          colors.push(r, g, b);
+        }
+      }
+
+      // build triangle indices
+      for (let i = 0; i < RES - 1; i++) {
+        for (let j = 0; j < RES - 1; j++) {
+          const a = i * RES + j;
+          const b = a + 1;
+          const c = a + RES;
+          const d = c + 1;
+          indices.push(a, b, c);
+          indices.push(b, d, c);
+        }
+      }
+
+      const surfGeo = new THREE_NS.BufferGeometry();
+      surfGeo.setAttribute('position', new THREE_NS.Float32BufferAttribute(positions, 3));
+      surfGeo.setAttribute('color', new THREE_NS.Float32BufferAttribute(colors, 3));
+      surfGeo.setIndex(indices);
+      surfGeo.computeVertexNormals();
+
+      const surfMat = new THREE_NS.MeshStandardMaterial({
+        vertexColors: true,
+        metalness: 0.35,
+        roughness: 0.45,
+        transparent: true,
+        opacity: 0.82,
+        side: THREE_NS.DoubleSide,
+      });
+      const surfMesh = new THREE_NS.Mesh(surfGeo, surfMat);
+      scene.object3D.add(surfMesh);
+
+      // wireframe overlay
+      const wireMat = new THREE_NS.MeshBasicMaterial({
+        color: new THREE_NS.Color('#7c4dff'),
+        wireframe: true,
+        transparent: true,
+        opacity: 0.12,
+      });
+      const wireMesh = new THREE_NS.Mesh(surfGeo.clone(), wireMat);
+      wireMesh.position.y = 0.002;
+      scene.object3D.add(wireMesh);
+
+      /* Axes for s-plane */
+      // σ axis
+      const sigAxis = createThickTube([[-4.5, 0, 0], [2.5, 0, 0]], '#78909c', 0.015);
+      scene.object3D.add(sigAxis);
+      // jω axis
+      const omAxis = createThickTube([[0, 0, -3], [0, 0, 3]], '#78909c', 0.015);
+      scene.object3D.add(omAxis);
+      // |X| axis
+      const magAxis = createThickTube([[0, 0, 0], [0, 2.8, 0]], '#78909c', 0.015);
+      scene.object3D.add(magAxis);
+
+      // axis labels
+      const sigLbl = document.createElement('a-text');
+      sigLbl.setAttribute('value', 'σ (real)');
+      sigLbl.setAttribute('position', '2.8 -0.3 0');
+      sigLbl.setAttribute('color', '#90a4ae');
+      sigLbl.setAttribute('width', '3');
+      scene.appendChild(sigLbl);
+
+      const omLbl = document.createElement('a-text');
+      omLbl.setAttribute('value', 'jω (imag)');
+      omLbl.setAttribute('position', '0.2 -0.3 3.2');
+      omLbl.setAttribute('color', '#90a4ae');
+      omLbl.setAttribute('width', '3');
+      scene.appendChild(omLbl);
+
+      const magLbl = document.createElement('a-text');
+      magLbl.setAttribute('value', '|X(s)|');
+      magLbl.setAttribute('position', '0.2 3.0 0');
+      magLbl.setAttribute('color', '#b388ff');
+      magLbl.setAttribute('width', '3');
+      scene.appendChild(magLbl);
+
+      /* Mark poles */
+      const poleColors = ['#ff5252', '#ff5252'];
+      const polePositions = [[-1, 0, 0], [-2, 0, 0]];
+      polePositions.forEach((pos, idx) => {
+        // Cross marker at pole
+        const cross1 = createThickTube(
+          [[pos[0] - 0.12, 0.02, pos[2] - 0.12], [pos[0] + 0.12, 0.02, pos[2] + 0.12]],
+          '#ff5252', 0.025
+        );
+        scene.object3D.add(cross1);
+        const cross2 = createThickTube(
+          [[pos[0] - 0.12, 0.02, pos[2] + 0.12], [pos[0] + 0.12, 0.02, pos[2] - 0.12]],
+          '#ff5252', 0.025
+        );
+        scene.object3D.add(cross2);
+
+        // glow sphere
+        const glow = document.createElement('a-sphere');
+        glow.setAttribute('position', `${pos[0]} 0.05 ${pos[2]}`);
+        glow.setAttribute('radius', '0.1');
+        glow.setAttribute('material', 'color: #ff5252; emissive: #d50000; emissiveIntensity: 1.5; opacity: 0.5; transparent: true');
+        glow.setAttribute('animation', 'property: material.opacity; from: 0.3; to: 0.7; dur: 800; dir: alternate; loop: true');
+        scene.appendChild(glow);
+
+        const plbl = document.createElement('a-text');
+        plbl.setAttribute('value', `Pole s=${pos[0]}`);
+        plbl.setAttribute('position', `${pos[0]} -0.4 ${pos[2]}`);
+        plbl.setAttribute('align', 'center');
+        plbl.setAttribute('color', '#ef9a9a');
+        plbl.setAttribute('width', '2');
+        scene.appendChild(plbl);
+      });
+
+      /* Mark jω axis (Fourier Transform line) with glowing line */
+      const jtLine = createThickTube([[0, 0.01, -2.8], [0, 0.01, 2.8]], '#4dd0e1', 0.02);
+      scene.object3D.add(jtLine);
+
+      const jtLbl = document.createElement('a-text');
+      jtLbl.setAttribute('value', '← jω axis = Fourier Transform');
+      jtLbl.setAttribute('position', '0.3 0.3 -2.5');
+      jtLbl.setAttribute('color', '#4dd0e1');
+      jtLbl.setAttribute('width', '3');
+      scene.appendChild(jtLbl);
+
+      /* Formula */
+      const formula = document.createElement('a-text');
+      formula.setAttribute('value', 'X(s) = 1/((s+1)(s+2))   Poles: s=-1, s=-2');
+      formula.setAttribute('position', '0 -1.0 0');
+      formula.setAttribute('align', 'center');
+      formula.setAttribute('color', '#b0bec5');
+      formula.setAttribute('width', '5');
+      scene.appendChild(formula);
+
+      /* Slowly rotate the surface for visual impact */
+      scene.setAttribute('animation', 'property: rotation; to: 0 360 0; dur: 60000; loop: true; easing: linear');
+    }
+
+    /* ═══════════════════════════════════════════════════
+       REBUILD & INIT
+       ═══════════════════════════════════════════════════ */
+    function rebuildAll() {
+      // Cancel all running animations
+      if (basicAnimId) cancelAnimationFrame(basicAnimId);
+      if (fsAnimId) cancelAnimationFrame(fsAnimId);
+      if (ftAnimId) cancelAnimationFrame(ftAnimId);
+
+      switch (activeSection) {
+        case 'basic':
+          buildBasicSignals();
+          animateBasic();
+          break;
+        case 'fourier-series':
+          buildFourierSeries();
+          animateFourierSeries();
+          break;
+        case 'fourier-transform':
+          buildFourierTransform();
+          animateFourierTransform();
+          break;
+        case 'laplace':
+          buildLaplace();
+          break;
+      }
+    }
+
+    /* Wait for A-Frame to be ready, then build the initial view */
+    document.querySelector('a-scene').addEventListener('loaded', () => {
+      rebuildAll();
+    });
+
+  </script>
+</body>
+</html>

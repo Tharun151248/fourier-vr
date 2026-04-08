@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR CODEX — Immersive Learning Hub</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script
+        src="https://unpkg.com/aframe-environment-component@1.3.3/dist/aframe-environment-component.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+        }
+    </style>
+</head>
+
+<body>
+
+    <script>
+        /* ===================================================================
+           CUSTOM A-FRAME COMPONENTS
+           =================================================================== */
+
+        // ---------- Glow-panel: creates an interactive, hoverable panel ----------
+        AFRAME.registerComponent('glow-panel', {
+            schema: {
+                label: { type: 'string', default: '' },
+                sublabel: { type: 'string', default: '' },
+                baseColor: { type: 'color', default: '#00f2fe' },
+                glowColor: { type: 'color', default: '#00f2fe' },
+                width: { type: 'number', default: 2.4 },
+                height: { type: 'number', default: 2.8 },
+                link: { type: 'string', default: '' }
+            },
+            init: function () {
+                const d = this.data;
+                const el = this.el;
+
+                // --- outer glow ring (slightly larger, transparent) ---
+                const glowRing = document.createElement('a-box');
+                glowRing.setAttribute('width', d.width + 0.15);
+                glowRing.setAttribute('height', d.height + 0.15);
+                glowRing.setAttribute('depth', 0.04);
+                glowRing.setAttribute('material', {
+                    color: d.glowColor, emissive: d.glowColor,
+                    emissiveIntensity: 0.6, opacity: 0.25, transparent: true
+                });
+                glowRing.setAttribute('position', '0 0 -0.03');
+                el.appendChild(glowRing);
+
+                // --- main panel ---
+                const panel = document.createElement('a-box');
+                panel.setAttribute('width', d.width);
+                panel.setAttribute('height', d.height);
+                panel.setAttribute('depth', 0.06);
+                panel.setAttribute('material', {
+                    color: '#0a0f1e', emissive: d.glowColor,
+                    emissiveIntensity: 0.15, opacity: 0.92, transparent: true,
+                    metalness: 0.4, roughness: 0.5
+                });
+                panel.classList.add('clickable');
+                el.appendChild(panel);
+
+                // --- border lines (top / bottom highlight) ---
+                ['top', 'bottom'].forEach(edge => {
+                    const bar = document.createElement('a-box');
+                    bar.setAttribute('width', d.width);
+                    bar.setAttribute('height', 0.04);
+                    bar.setAttribute('depth', 0.07);
+                    bar.setAttribute('material', {
+                        color: d.glowColor, emissive: d.glowColor, emissiveIntensity: 1.0
+                    });
+                    const yPos = edge === 'top' ? d.height / 2 : -d.height / 2;
+                    bar.setAttribute('position', `0 ${yPos} 0.01`);
+                    el.appendChild(bar);
+                });
+
+                // --- label text ---
+                const title = document.createElement('a-text');
+                title.setAttribute('value', d.label);
+                title.setAttribute('align', 'center');
+                title.setAttribute('color', d.glowColor);
+                title.setAttribute('width', d.width * 3.2);
+                title.setAttribute('position', '0 0.35 0.05');
+                title.setAttribute('font', 'mozillavr');
+                el.appendChild(title);
+
+                // --- sub-label ---
+                if (d.sublabel) {
+                    const sub = document.createElement('a-text');
+                    sub.setAttribute('value', d.sublabel);
+                    sub.setAttribute('align', 'center');
+                    sub.setAttribute('color', '#94a3b8');
+                    sub.setAttribute('width', d.width * 1.6);
+                    sub.setAttribute('position', '0 -0.25 0.05');
+                    sub.setAttribute('font', 'mozillavr');
+                    el.appendChild(sub);
+                }
+
+                // --- icon ring (decorative circle behind label) ---
+                const ring = document.createElement('a-ring');
+                ring.setAttribute('radius-inner', 0.45);
+                ring.setAttribute('radius-outer', 0.55);
+                ring.setAttribute('material', {
+                    color: d.glowColor, emissive: d.glowColor,
+                    emissiveIntensity: 0.7, opacity: 0.35, transparent: true,
+                    side: 'double'
+                });
+                ring.setAttribute('position', '0 0.35 0.04');
+                ring.setAttribute('animation', {
+                    property: 'rotation', to: '0 0 360',
+                    dur: 8000, loop: true, easing: 'linear'
+                });
+                el.appendChild(ring);
+
+                // ---------- Hover & Click interaction ----------
+                const self = this;
+                panel.addEventListener('mouseenter', () => self.onHoverEnter());
+                panel.addEventListener('mouseleave', () => self.onHoverLeave());
+                panel.addEventListener('click', () => self.onClick());
+
+                this.panel = panel;
+                this.glowRing = glowRing;
+            },
+
+            onHoverEnter: function () {
+                const d = this.data;
+                this.el.setAttribute('animation__scale', {
+                    property: 'scale', to: '1.12 1.12 1.12',
+                    dur: 300, easing: 'easeOutQuad'
+                });
+                this.glowRing.setAttribute('material', {
+                    color: d.glowColor, emissive: d.glowColor,
+                    emissiveIntensity: 1.2, opacity: 0.55, transparent: true
+                });
+                this.panel.setAttribute('material', {
+                    color: '#0a0f1e', emissive: d.glowColor,
+                    emissiveIntensity: 0.45, opacity: 0.95, transparent: true,
+                    metalness: 0.4, roughness: 0.5
+                });
+                // pulse sound (visual flash instead if no audio)
+                this.flashFeedback();
+            },
+
+            onHoverLeave: function () {
+                const d = this.data;
+                this.el.setAttribute('animation__scale', {
+                    property: 'scale', to: '1 1 1',
+                    dur: 300, easing: 'easeOutQuad'
+                });
+                this.glowRing.setAttribute('material', {
+                    color: d.glowColor, emissive: d.glowColor,
+                    emissiveIntensity: 0.6, opacity: 0.25, transparent: true
+                });
+                this.panel.setAttribute('material', {
+                    color: '#0a0f1e', emissive: d.glowColor,
+                    emissiveIntensity: 0.15, opacity: 0.92, transparent: true,
+                    metalness: 0.4, roughness: 0.5
+                });
+            },
+
+            onClick: function () {
+                const d = this.data;
+                // flash white then revert
+                this.panel.setAttribute('material', 'emissiveIntensity', 1.5);
+                setTimeout(() => {
+                    this.panel.setAttribute('material', 'emissiveIntensity', 0.45);
+                }, 200);
+                if (d.link) {
+                    setTimeout(() => { window.location.href = d.link; }, 600);
+                }
+            },
+
+            flashFeedback: function () {
+                const flash = document.createElement('a-box');
+                flash.setAttribute('width', this.data.width + 0.3);
+                flash.setAttribute('height', this.data.height + 0.3);
+                flash.setAttribute('depth', 0.01);
+                flash.setAttribute('material', {
+                    color: this.data.glowColor, emissive: this.data.glowColor,
+                    emissiveIntensity: 2, opacity: 0.3, transparent: true
+                });
+                flash.setAttribute('position', '0 0 -0.05');
+                flash.setAttribute('animation', {
+                    property: 'material.opacity', from: 0.3, to: 0,
+                    dur: 500, easing: 'easeOutQuad'
+                });
+                this.el.appendChild(flash);
+                setTimeout(() => flash.remove(), 600);
+            }
+        });
+
+        // ---------- Floating particles system ----------
+        AFRAME.registerComponent('particle-system', {
+            schema: {
+                count: { type: 'int', default: 120 },
+                color: { type: 'color', default: '#00f2fe' },
+                spread: { type: 'number', default: 30 },
+                height: { type: 'number', default: 15 }
+            },
+            init: function () {
+                const d = this.data;
+                for (let i = 0; i < d.count; i++) {
+                    const p = document.createElement('a-sphere');
+                    const x = (Math.random() - 0.5) * d.spread;
+                    const y = Math.random() * d.height + 0.5;
+                    const z = (Math.random() - 0.5) * d.spread;
+                    const size = 0.015 + Math.random() * 0.04;
+                    const dur = 4000 + Math.random() * 8000;
+
+                    p.setAttribute('position', `${x} ${y} ${z}`);
+                    p.setAttribute('radius', size);
+                    p.setAttribute('material', {
+                        color: d.color, emissive: d.color,
+                        emissiveIntensity: 1.5 + Math.random(),
+                        opacity: 0.3 + Math.random() * 0.5,
+                        transparent: true
+                    });
+                    p.setAttribute('animation', {
+                        property: 'position',
+                        to: `${x + (Math.random() - 0.5) * 2} ${y + 1 + Math.random() * 3} ${z + (Math.random() - 0.5) * 2}`,
+                        dur: dur, dir: 'alternate', loop: true,
+                        easing: 'easeInOutSine'
+                    });
+                    p.setAttribute('animation__opacity', {
+                        property: 'material.opacity',
+                        from: 0.2, to: 0.7,
+                        dur: dur * 0.6, dir: 'alternate', loop: true,
+                        easing: 'easeInOutSine'
+                    });
+                    this.el.appendChild(p);
+                }
+            }
+        });
+
+        // ---------- Neon grid floor ----------
+        AFRAME.registerComponent('neon-grid', {
+            schema: {
+                size: { type: 'number', default: 60 },
+                divisions: { type: 'int', default: 40 },
+                color: { type: 'color', default: '#00f2fe' }
+            },
+            init: function () {
+                const d = this.data;
+                const half = d.size / 2;
+                const step = d.size / d.divisions;
+
+                // create grid lines along X and Z
+                for (let i = 0; i <= d.divisions; i++) {
+                    const offset = -half + i * step;
+
+                    // line along Z
+                    const lineZ = document.createElement('a-box');
+                    lineZ.setAttribute('width', 0.02);
+                    lineZ.setAttribute('height', 0.005);
+                    lineZ.setAttribute('depth', d.size);
+                    lineZ.setAttribute('position', `${offset} 0.005 0`);
+                    lineZ.setAttribute('material', {
+                        color: d.color, emissive: d.color,
+                        emissiveIntensity: 0.6, opacity: 0.25, transparent: true
+                    });
+                    this.el.appendChild(lineZ);
+
+                    // line along X
+                    const lineX = document.createElement('a-box');
+                    lineX.setAttribute('width', d.size);
+                    lineX.setAttribute('height', 0.005);
+                    lineX.setAttribute('depth', 0.02);
+                    lineX.setAttribute('position', `0 0.005 ${offset}`);
+                    lineX.setAttribute('material', {
+                        color: d.color, emissive: d.color,
+                        emissiveIntensity: 0.6, opacity: 0.25, transparent: true
+                    });
+                    this.el.appendChild(lineX);
+                }
+            }
+        });
+
+        // ---------- Orbiting decorative ring ----------
+        AFRAME.registerComponent('orbit-ring', {
+            schema: {
+                radius: { type: 'number', default: 0.8 },
+                color: { type: 'color', default: '#4facfe' },
+                speed: { type: 'number', default: 6000 }
+            },
+            init: function () {
+                const d = this.data;
+                const ring = document.createElement('a-torus');
+                ring.setAttribute('radius', d.radius);
+                ring.setAttribute('radius-tubular', 0.012);
+                ring.setAttribute('segments-radial', 6);
+                ring.setAttribute('segments-tubular', 30);
+                ring.setAttribute('material', {
+                    color: d.color, emissive: d.color,
+                    emissiveIntensity: 1, opacity: 0.6, transparent: true, side: 'double'
+                });
+                ring.setAttribute('animation', {
+                    property: 'rotation', to: '360 360 0',
+                    dur: d.speed, loop: true, easing: 'linear'
+                });
+                this.el.appendChild(ring);
+
+                // second ring, opposite rotation
+                const ring2 = document.createElement('a-torus');
+                ring2.setAttribute('radius', d.radius * 0.65);
+                ring2.setAttribute('radius-tubular', 0.008);
+                ring2.setAttribute('segments-radial', 5);
+                ring2.setAttribute('segments-tubular', 28);
+                ring2.setAttribute('rotation', '90 0 0');
+                ring2.setAttribute('material', {
+                    color: d.color, emissive: d.color,
+                    emissiveIntensity: 0.8, opacity: 0.4, transparent: true, side: 'double'
+                });
+                ring2.setAttribute('animation', {
+                    property: 'rotation', from: '90 0 0', to: '90 360 360',
+                    dur: d.speed * 1.3, loop: true, easing: 'linear'
+                });
+                this.el.appendChild(ring2);
+            }
+        });
+    </script>
+
+    <!-- ===================================================================
+     A-FRAME SCENE
+     =================================================================== -->
+    <a-scene vr-mode-ui="enabled: true"
+        renderer="antialias: true; colorManagement: true; sortObjects: true; physicallyCorrectLights: true"
+        fog="type: exponential; color: #020617; density: 0.025" background="color: #020617">
+
+        <!-- ===== Sky ===== -->
+        <a-sky color="#020617"></a-sky>
+
+        <!-- ===== Ground plane ===== -->
+        <a-plane position="0 0 0" rotation="-90 0 0" width="80" height="80"
+            material="color: #060c1f; opacity: 0.95; metalness: 0.6; roughness: 0.4"></a-plane>
+
+        <!-- ===== Neon grid floor ===== -->
+        <a-entity neon-grid="size: 60; divisions: 40; color: #00f2fe"></a-entity>
+
+        <!-- ===== Floating particles ===== -->
+        <a-entity particle-system="count: 100; color: #00f2fe; spread: 30; height: 12"></a-entity>
+        <a-entity particle-system="count: 40;  color: #a855f7; spread: 25; height: 10"></a-entity>
+        <a-entity particle-system="count: 30;  color: #f472b6; spread: 20; height: 8"></a-entity>
+
+        <!-- ===== Lighting ===== -->
+        <a-entity light="type: ambient; color: #334155; intensity: 0.4"></a-entity>
+        <a-entity light="type: point; color: #00f2fe; intensity: 1.8; distance: 25; decay: 1.5"
+            position="0 6 -5"></a-entity>
+        <a-entity light="type: point; color: #a855f7; intensity: 1.2; distance: 20; decay: 1.5"
+            position="-6 4 -3"></a-entity>
+        <a-entity light="type: point; color: #f472b6; intensity: 1.0; distance: 18; decay: 1.5"
+            position="6 4 -3"></a-entity>
+        <a-entity light="type: point; color: #4facfe; intensity: 0.6; distance: 15; decay: 2"
+            position="0 2 2"></a-entity>
+        <!-- subtle directional fill -->
+        <a-entity light="type: directional; color: #1e3a5f; intensity: 0.3" position="0 8 -4"></a-entity>
+
+        <!-- ============================================================
+         CENTER BLOCK — VR CODEX (Main Hub)
+         ============================================================ -->
+        <a-entity position="0 2.2 -5">
+
+            <!-- Rotating orbit rings -->
+            <a-entity orbit-ring="radius: 2.0; color: #4facfe; speed: 10000" position="0 0 0"></a-entity>
+
+            <!-- Main panel -->
+            <a-entity
+                glow-panel="label: VR CODEX; sublabel: Immersive Learning Hub; baseColor: #00f2fe; glowColor: #00f2fe; width: 2.8; height: 3.2"
+                animation="property: rotation; to: 0 360 0; dur: 30000; loop: true; easing: linear"></a-entity>
+
+            <!-- Vertical accent light beam -->
+            <a-cylinder position="0 -1.1 0" radius="0.03" height="6"
+                material="color: #00f2fe; emissive: #00f2fe; emissiveIntensity: 1.5; opacity: 0.15; transparent: true"></a-cylinder>
+        </a-entity>
+
+        <!-- ============================================================
+         LEFT BLOCK — SS (Signals and Systems)
+         ============================================================ -->
+        <a-entity position="-4.5 2 -4.5" rotation="0 25 0">
+
+            <a-entity
+                glow-panel="label: SS; sublabel: Signals & Systems; baseColor: #a855f7; glowColor: #a855f7; width: 2.4; height: 2.8; link: signals_systems.html"></a-entity>
+
+            <!-- Decorative floating ring -->
+            <a-torus position="0 1.8 0" radius="0.5" radius-tubular="0.015"
+                material="color: #a855f7; emissive: #a855f7; emissiveIntensity: 1; opacity: 0.4; transparent: true; side: double"
+                animation="property: rotation; to: 0 360 0; dur: 5000; loop: true; easing: linear"></a-torus>
+
+            <!-- Vertical beam -->
+            <a-cylinder position="0 -1 0" radius="0.02" height="4"
+                material="color: #a855f7; emissive: #a855f7; emissiveIntensity: 1; opacity: 0.12; transparent: true"></a-cylinder>
+        </a-entity>
+
+        <!-- ============================================================
+         RIGHT BLOCK — EDC (Electronic Devices & Circuits)
+         ============================================================ -->
+        <a-entity position="4.5 2 -4.5" rotation="0 -25 0">
+
+            <a-entity
+                glow-panel="label: EDC; sublabel: Electronic Devices; baseColor: #f472b6; glowColor: #f472b6; width: 2.4; height: 2.8; link: edc_components.html"></a-entity>
+
+            <!-- Decorative floating ring -->
+            <a-torus position="0 1.8 0" radius="0.5" radius-tubular="0.015"
+                material="color: #f472b6; emissive: #f472b6; emissiveIntensity: 1; opacity: 0.4; transparent: true; side: double"
+                animation="property: rotation; to: 0 -360 0; dur: 5000; loop: true; easing: linear"></a-torus>
+
+            <!-- Vertical beam -->
+            <a-cylinder position="0 -1 0" radius="0.02" height="4"
+                material="color: #f472b6; emissive: #f472b6; emissiveIntensity: 1; opacity: 0.12; transparent: true"></a-cylinder>
+        </a-entity>
+
+        <!-- ============================================================
+         DECORATIVE ELEMENTS
+         ============================================================ -->
+
+        <!-- Distant floating pillars -->
+        <a-cylinder position="-12 3 -15" radius="0.15" height="8"
+            material="color: #0f172a; emissive: #00f2fe; emissiveIntensity: 0.3; opacity: 0.5; transparent: true"></a-cylinder>
+        <a-cylinder position="12 3 -15" radius="0.15" height="8"
+            material="color: #0f172a; emissive: #f472b6; emissiveIntensity: 0.3; opacity: 0.5; transparent: true"></a-cylinder>
+        <a-cylinder position="-8 2 -20" radius="0.1" height="6"
+            material="color: #0f172a; emissive: #a855f7; emissiveIntensity: 0.3; opacity: 0.4; transparent: true"></a-cylinder>
+        <a-cylinder position="8 2 -20" radius="0.1" height="6"
+            material="color: #0f172a; emissive: #4facfe; emissiveIntensity: 0.3; opacity: 0.4; transparent: true"></a-cylinder>
+
+        <!-- Large background torus -->
+        <a-torus position="0 5 -18" radius="5" radius-tubular="0.04"
+            material="color: #4facfe; emissive: #4facfe; emissiveIntensity: 0.5; opacity: 0.12; transparent: true; side: double"
+            animation="property: rotation; to: 360 0 360; dur: 40000; loop: true; easing: linear"></a-torus>
+
+        <!-- Horizontal accent rings on ground plane -->
+        <a-torus position="0 0.05 -5" rotation="90 0 0" radius="6" radius-tubular="0.015"
+            material="color: #00f2fe; emissive: #00f2fe; emissiveIntensity: 1.2; opacity: 0.15; transparent: true; side: double"
+            animation="property: object3D.rotation.z; from: 0; to: 360; dur: 20000; loop: true; easing: linear"></a-torus>
+        <a-torus position="0 0.05 -5" rotation="90 0 0" radius="8" radius-tubular="0.01"
+            material="color: #a855f7; emissive: #a855f7; emissiveIntensity: 0.8; opacity: 0.1; transparent: true; side: double"
+            animation="property: object3D.rotation.z; from: 0; to: -360; dur: 25000; loop: true; easing: linear"></a-torus>
+
+        <!-- ============================================================
+         CAMERA & CURSOR (gaze-based interaction)
+         ============================================================ -->
+        <a-entity id="cameraRig" position="0 1.6 2">
+            <a-camera look-controls wasd-controls="acceleration: 20"
+                cursor="rayOrigin: mouse; fuse: false"
+                raycaster="objects: .clickable; far: 30">
+                <a-entity cursor="fuse: true; fuseTimeout: 1500" position="0 0 -1"
+                    geometry="primitive: ring; radiusInner: 0.015; radiusOuter: 0.025"
+                    material="color: #00f2fe; emissive: #00f2fe; emissiveIntensity: 1; opacity: 0.9; shader: flat"
+                    animation__click="property: scale; startEvents: click; from: 0.1 0.1 0.1; to: 1 1 1; dur: 200"
+                    animation__fusing="property: scale; startEvents: fusing; from: 1 1 1; to: 0.3 0.3 0.3; dur: 1500; easing: linear"
+                    animation__mouseleave="property: scale; startEvents: mouseleave; to: 1 1 1; dur: 200"
+                    raycaster="objects: .clickable; far: 30"></a-entity>
+            </a-camera>
+        </a-entity>
+
+    </a-scene>
+
+</body>
+
+</html>
